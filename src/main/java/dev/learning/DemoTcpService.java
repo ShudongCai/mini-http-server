@@ -2,9 +2,11 @@ package dev.learning;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 
 
 public class DemoTcpService {
@@ -25,14 +27,15 @@ public class DemoTcpService {
 
     public void bind() {
         try(Socket socket = serverSocket.accept()) {
-            socket.setSoTimeout(5_000);
-
-            InputStream input =  socket.getInputStream();
-            System.out.println("Waiting for Data...");
-
-            int data = input.read();
-
-            System.out.println("Received: " + data);
+            OutputStream output = socket.getOutputStream();
+            String content =
+                    "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: text/plain; charset=utf-8\r\n" +
+                    "Content-Length: 12\r\n" +
+                    "Connection: close\r\n" +
+                    "\r\n" +
+                    "Hello World!";
+            output.write(content.getBytes(StandardCharsets.UTF_8));
         } catch (SocketTimeoutException e) {
             System.out.println("Client read timeout");
         } catch (IOException e) {
@@ -47,6 +50,8 @@ public class DemoTcpService {
             throw new RuntimeException(e);
         }
     }
+
+
 
 
 }
