@@ -1,6 +1,7 @@
 package dev.learning;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 public class Main {
@@ -17,7 +18,12 @@ public class Main {
 
         HttpHeaderReader reader = new HttpHeaderReader();
 
-        reader.readHeaders(stream);
+        try {
+            reader.readHeaders(stream);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
 //        DemoTcpService demoTcpService = new DemoTcpService(8080);
 //        demoTcpService.listen();
 //

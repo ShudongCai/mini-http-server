@@ -16,39 +16,34 @@ public class HttpHeaderReader {
 
     private int pendingSize = 0;
 
-    public void readHeaders(InputStream stream) {
-        try {
-            while (true) {
-                int headerEnd = findHeaderEnd();
+    public byte[] readHeaders(InputStream stream) throws IOException{
+        while (true) {
+            int headerEnd = findHeaderEnd();
 
-                if (headerEnd >= 0) {
-                    processHeader(headerEnd);
-                    continue;
-                }
-
-                int bytesRead = stream.read(readBuffer);
-
-                if (bytesRead == -1) {
-                    if (pendingSize > 0) {
-                        throw new EOFException("Incomplete HTTP headers");
-                    }
-                    return;
-                }
-
-                if (bytesRead > pending.length - pendingSize) {
-                    throw new IllegalArgumentException("Buffer capacity exceeded");
-                }
-
-                System.arraycopy(
-                        readBuffer, 0,
-                        pending, pendingSize,
-                        bytesRead
-                );
-
-                pendingSize += bytesRead;
+            if (headerEnd >= 0) {
+                return processHeader(headerEnd);
             }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+
+            int bytesRead = stream.read(readBuffer);
+
+            if (bytesRead == -1) {
+                if (pendingSize > 0) {
+                    throw new EOFException("Incomplete HTTP headers");
+                }
+                return null;
+            }
+
+            if (bytesRead > pending.length - pendingSize) {
+                throw new IllegalArgumentException("Buffer capacity exceeded");
+            }
+
+            System.arraycopy(
+                    readBuffer, 0,
+                    pending, pendingSize,
+                    bytesRead
+            );
+
+            pendingSize += bytesRead;
         }
     }
 
@@ -65,16 +60,11 @@ public class HttpHeaderReader {
         return -1;
     }
 
-    private void processHeader(int headerEnd) {
+    private byte[] processHeader(int headerEnd) {
         int endExclusive = headerEnd + 1;
 
         byte[] header = Arrays.copyOfRange(
                 pending, 0, endExclusive
-        );
-
-        // Temporary debugging; later pass to HTTP parser
-        System.out.println(
-                new String(header, StandardCharsets.UTF_8)
         );
 
         int remaining = pendingSize - endExclusive;
@@ -86,6 +76,8 @@ public class HttpHeaderReader {
         );
 
         pendingSize = remaining;
+
+        return header;
     }
 }
 
