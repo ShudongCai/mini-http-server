@@ -27,6 +27,10 @@ public class HttpRequestLineParser {
                 versionPosition = i;
                 break;
             }
+
+            if (input[i] == '\n') {
+                throw new IllegalArgumentException("Invalid HTTP header");
+            }
         }
 
         if (methodPosition > 0 &&
