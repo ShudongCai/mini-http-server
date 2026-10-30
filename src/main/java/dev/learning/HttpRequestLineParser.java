@@ -5,55 +5,54 @@ import java.nio.charset.StandardCharsets;
 public class HttpRequestLineParser {
 
     public HttpRequestLine parseHttpRequestLine(byte[] input) {
-        int position = 0;
-        int dataIndex = 0;
-        String method = "";
-        String target = "";
-        String version = "";
+        int methodPosition = -1;
+        int targetPosition = -1;
+        int versionPosition = -1;
+
         for (int i = 0; i < input.length; ++i) {
             if (input[i] == ' ') {
-                if (dataIndex == 0 && input[position] != ' ') {
-                    method = new String(
-                            input,
-                            position,
-                            i - position,
-                            StandardCharsets.UTF_8
-                    );
-                    dataIndex++;
-                    position = i + 1;
-                } else if (dataIndex == 1 && input[position] != ' ') {
-                    target = new String(
-                            input,
-                            position,
-                            i - position,
-                            StandardCharsets.UTF_8
-                    );
-                    dataIndex++;
-                    position = i + 1;
+                if (methodPosition == -1) {
+                    methodPosition = i;
+                } else if (targetPosition == -1){
+                    targetPosition = i;
                 } else {
-                    throw new IllegalArgumentException("Invalid request spacing");
+                    throw new IllegalArgumentException("Invalid HTTP header");
                 }
             }
 
             if (input[i] == '\r') {
-                if (dataIndex != 2 || i == position) {
-                    throw new IllegalArgumentException("Invalid request line");
-                }
-
                 if (i + 1 >= input.length || input[i + 1] != '\n') {
-                    throw new IllegalArgumentException("Invalid request line ending");
+                    throw new IllegalArgumentException("Invalid HTTP header");
                 }
-
-                version = new String(
-                        input,
-                        position,
-                        i - position,
-                        StandardCharsets.UTF_8
-                );
-                return new HttpRequestLine(method, target, version);
+                versionPosition = i;
+                break;
             }
         }
 
+        if (methodPosition > 0 &&
+                targetPosition > methodPosition + 1 &&
+                versionPosition > targetPosition + 1
+        ) {
+            return new HttpRequestLine(
+                    extract(input, 0, methodPosition),
+                    extract(input, methodPosition + 1, targetPosition),
+                    extract(input, targetPosition + 1, versionPosition)
+            );
+        }
+
         throw new IllegalArgumentException("Missing request line ending");
+    }
+
+    private String extract(
+            byte[] input,
+            int start,
+            int endExclusive
+    ) {
+        return new String(
+                input,
+                start,
+                endExclusive - start,
+                StandardCharsets.US_ASCII
+        );
     }
 }
