@@ -3,7 +3,7 @@ package dev.learning;
 
 import java.nio.charset.StandardCharsets;
 
-public class HttpHeaderParser {
+public class HttpHeaderFieldsParser {
 
     public HttpHeaders parse(byte[] input) {
         if (input == null) {
