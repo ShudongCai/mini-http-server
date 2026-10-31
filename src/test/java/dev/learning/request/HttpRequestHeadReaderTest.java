@@ -1,4 +1,4 @@
-package dev.learning;
+package dev.learning.request;
 
 import org.junit.jupiter.api.Test;
 
@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class HttpHeaderReaderTest {
+public class HttpRequestHeadReaderTest {
     @Test
     void shouldReadCompleteHeader() throws IOException {
         //Arrange
@@ -18,10 +18,10 @@ public class HttpHeaderReaderTest {
         byte[] expected = request.getBytes(StandardCharsets.UTF_8);
 
         ByteArrayInputStream input = new ByteArrayInputStream(expected);
-        HttpHeaderReader reader = new HttpHeaderReader();
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
 
         //Act
-        byte[] actual = reader.readHeaders(input);
+        byte[] actual = reader.readHead(input);
 
         //Assert
         assertArrayEquals(expected, actual);
@@ -36,11 +36,11 @@ public class HttpHeaderReaderTest {
         ByteArrayInputStream stream = new ByteArrayInputStream(
                 (first + second).getBytes(StandardCharsets.UTF_8)
         );
-        HttpHeaderReader reader = new HttpHeaderReader();
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
 
         //Act
-        byte[] actualFirst = reader.readHeaders(stream);
-        byte[] actualSecond = reader.readHeaders(stream);
+        byte[] actualFirst = reader.readHead(stream);
+        byte[] actualSecond = reader.readHead(stream);
 
         //Assert
         assertArrayEquals(first.getBytes(StandardCharsets.UTF_8), actualFirst);
@@ -55,10 +55,10 @@ public class HttpHeaderReaderTest {
         ByteArrayInputStream stream = new ByteArrayInputStream(
                 first.getBytes(StandardCharsets.UTF_8)
         );
-        HttpHeaderReader reader = new HttpHeaderReader();
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
 
         //Act + Assert
-        assertThrows(EOFException.class, () -> reader.readHeaders(stream));
+        assertThrows(EOFException.class, () -> reader.readHead(stream));
     }
 
     @Test
@@ -72,10 +72,10 @@ public class HttpHeaderReaderTest {
                 return super.read(b, off, Math.min(len, 3));
             }
         };
-        HttpHeaderReader reader = new HttpHeaderReader();
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
 
         //Act
-        byte[] actual = reader.readHeaders(stream);
+        byte[] actual = reader.readHead(stream);
 
         //Assert
         assertArrayEquals(first.getBytes(StandardCharsets.UTF_8), actual);
@@ -94,13 +94,13 @@ public class HttpHeaderReaderTest {
                 + suffix;
 
         ByteArrayInputStream stream = new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8));
-        HttpHeaderReader reader = new HttpHeaderReader();
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
 
         assertEquals(16385, request.getBytes(StandardCharsets.UTF_8).length);
 
         //Act + Assert
         assertThrows(IllegalArgumentException.class,
-                () -> reader.readHeaders(stream)
+                () -> reader.readHead(stream)
         );
     }
 
@@ -113,10 +113,10 @@ public class HttpHeaderReaderTest {
                 + "a".repeat(4094 - prefix.length())
                 + "\r\n\r\n";
         ByteArrayInputStream stream = new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8));
-        HttpHeaderReader reader = new HttpHeaderReader();
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
 
         //Act
-        byte[] actual = reader.readHeaders(stream);
+        byte[] actual = reader.readHead(stream);
 
         //Arrange
         assertArrayEquals(request.getBytes(StandardCharsets.UTF_8), actual);

@@ -1,13 +1,12 @@
-package dev.learning.request;
+package dev.learning.request.parser;
 
-import dev.learning.request.headerFields.HttpHeaderFields;
-import dev.learning.request.headerFields.HttpHeaderFieldsParser;
-import dev.learning.request.headerRequest.HttpRequestLine;
-import dev.learning.request.headerRequest.HttpRequestLineParser;
+import dev.learning.request.model.HttpRequest;
+import dev.learning.request.model.HttpRequestLine;
+import dev.learning.request.model.HttpHeaderFields;
 
 import java.util.Arrays;
 
-public class HttpRequestParser {
+public class HttpRequestHeadParser {
     public HttpRequest parse(byte[] input) {
         if (input == null || input.length < 1) {
             throw new IllegalArgumentException("The http header is invalid");
@@ -30,7 +29,7 @@ public class HttpRequestParser {
             HttpHeaderFieldsParser headerFieldsParser = new HttpHeaderFieldsParser();
 
             HttpRequestLine requestLine =
-                    requestLineParser.parseHttpRequestLine(
+                    requestLineParser.parse(
                             Arrays.copyOfRange(input, 0, i + 2)
                     );
 

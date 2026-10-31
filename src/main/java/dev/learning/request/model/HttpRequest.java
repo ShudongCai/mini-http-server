@@ -1,7 +1,4 @@
-package dev.learning.request;
-
-import dev.learning.request.headerFields.HttpHeaderFields;
-import dev.learning.request.headerRequest.HttpRequestLine;
+package dev.learning.request.model;
 
 public class HttpRequest {
     private final HttpRequestLine httpRequestLine;

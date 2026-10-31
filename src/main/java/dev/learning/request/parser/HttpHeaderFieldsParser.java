@@ -1,16 +1,18 @@
 
-package dev.learning;
+package dev.learning.request.parser;
+
+import dev.learning.request.model.HttpHeaderFields;
 
 import java.nio.charset.StandardCharsets;
 
 public class HttpHeaderFieldsParser {
 
-    public HttpHeaders parse(byte[] input) {
+    public HttpHeaderFields parse(byte[] input) {
         if (input == null) {
             throw new IllegalArgumentException("Header input must not be null");
         }
 
-        HttpHeaders httpHeaders = new HttpHeaders();
+        HttpHeaderFields httpHeaderFields = new HttpHeaderFields();
         int lineStart = 0;
 
         for (int i = 0; i < input.length; i++) {
@@ -35,16 +37,16 @@ public class HttpHeaderFieldsParser {
                     throw new IllegalArgumentException("Unexpected data after headers");
                 }
 
-                return httpHeaders;
+                return httpHeaderFields;
             }
 
             // Parse the current header line
-            String[] header = getHeaders(input, lineStart, i);
+            String[] header = parseFieldLine(input, lineStart, i);
 
             String headerName = header[0];
             String headerValue = stripOptionalWhitespace(header[1]);
 
-            httpHeaders.add(headerName, headerValue);
+            httpHeaderFields.add(headerName, headerValue);
 
             // Move to the start of the next line
             lineStart = i + 2;
@@ -54,7 +56,7 @@ public class HttpHeaderFieldsParser {
         throw new IllegalArgumentException("Missing header section terminator");
     }
 
-    private String[] getHeaders(byte[] input, int start, int endExclusive) {
+    private String[] parseFieldLine(byte[] input, int start, int endExclusive) {
         String line = new String(
                 input,
                 start,

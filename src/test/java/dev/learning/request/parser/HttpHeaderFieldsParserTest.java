@@ -1,6 +1,7 @@
 
-package dev.learning.request.headerFields;
+package dev.learning.request.parser;
 
+import dev.learning.request.model.HttpHeaderFields;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

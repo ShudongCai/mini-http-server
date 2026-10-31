@@ -1,5 +1,8 @@
 package dev.learning;
 
+import dev.learning.request.HttpRequestHeadReader;
+import dev.learning.server.DemoHttpServer;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,19 +19,19 @@ public class Main {
                         "GET /c").getBytes(StandardCharsets.UTF_8)
         );
 
-        HttpHeaderReader reader = new HttpHeaderReader();
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
 
         try {
-            reader.readHeaders(stream);
+            reader.readHead(stream);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
-//        DemoTcpService demoTcpService = new DemoTcpService(8080);
-//        demoTcpService.listen();
+//        DemoHttpServer demoHttpServer = new DemoHttpServer(8080);
+//        demoHttpServer.listen();
 //
-//        demoTcpService.bind();
+//        demoHttpServer.acceptAndRespondOnce();
 //
-//        demoTcpService.close();
+//        demoHttpServer.close();
     }
 }

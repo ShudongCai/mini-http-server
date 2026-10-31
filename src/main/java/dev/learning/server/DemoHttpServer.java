@@ -1,4 +1,6 @@
-package dev.learning;
+package dev.learning.server;
+
+import dev.learning.response.HttpResponse;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -8,11 +10,11 @@ import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 
 
-public class DemoTcpService {
+public class DemoHttpServer {
     private ServerSocket serverSocket;
     private final int port;
 
-    public DemoTcpService(int port) {
+    public DemoHttpServer(int port) {
         this.port = port;
     }
 
@@ -24,7 +26,7 @@ public class DemoTcpService {
         }
     }
 
-    public void bind() {
+    public void acceptAndRespondOnce() {
         try(Socket socket = serverSocket.accept()) {
             OutputStream output = socket.getOutputStream();
             HttpResponse httpHeader = HttpResponse.builder().setContent("HelloWorld! HI! Hi!").build();

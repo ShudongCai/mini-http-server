@@ -1,4 +1,4 @@
-package dev.learning;
+package dev.learning.request.model;
 
 public record HttpRequestLine(
         String method,

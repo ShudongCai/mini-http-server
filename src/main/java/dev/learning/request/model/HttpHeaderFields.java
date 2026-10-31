@@ -1,11 +1,11 @@
-package dev.learning;
+package dev.learning.request.model;
 
 import java.util.*;
 
-public class HttpHeaders {
+public class HttpHeaderFields {
     private final Map<String, List<String>> headers;
 
-    public HttpHeaders() {
+    public HttpHeaderFields() {
         headers = new HashMap<>();
     }
 

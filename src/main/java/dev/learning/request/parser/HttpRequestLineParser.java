@@ -1,10 +1,12 @@
-package dev.learning;
+package dev.learning.request.parser;
+
+import dev.learning.request.model.HttpRequestLine;
 
 import java.nio.charset.StandardCharsets;
 
 public class HttpRequestLineParser {
 
-    public HttpRequestLine parseHttpRequestLine(byte[] input) {
+    public HttpRequestLine parse(byte[] input) {
         int methodPosition = -1;
         int targetPosition = -1;
         int versionPosition = -1;

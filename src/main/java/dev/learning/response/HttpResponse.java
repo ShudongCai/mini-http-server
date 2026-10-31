@@ -1,4 +1,4 @@
-package dev.learning;
+package dev.learning.response;
 
 import java.nio.charset.StandardCharsets;
 

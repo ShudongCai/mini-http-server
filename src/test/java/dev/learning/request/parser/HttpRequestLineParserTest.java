@@ -1,5 +1,6 @@
-package dev.learning;
+package dev.learning.request.parser;
 
+import dev.learning.request.model.HttpRequestLine;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -20,7 +21,7 @@ public class HttpRequestLineParserTest {
         HttpRequestLineParser parser = new HttpRequestLineParser();
 
         // Act
-        HttpRequestLine actual = parser.parseHttpRequestLine(
+        HttpRequestLine actual = parser.parse(
                 rawHeader.getBytes(StandardCharsets.US_ASCII)
         );
 
@@ -40,7 +41,7 @@ public class HttpRequestLineParserTest {
         //Act + Assert
          assertThrows(
                  IllegalArgumentException.class,
-                 () -> parser.parseHttpRequestLine(
+                 () -> parser.parse(
                 rawHeader.getBytes(StandardCharsets.UTF_8))
          );
     }
@@ -55,7 +56,7 @@ public class HttpRequestLineParserTest {
         //Act + Assert
         assertThrows(
                 IllegalArgumentException.class,
-                () -> parser.parseHttpRequestLine(
+                () -> parser.parse(
                         rawHeader.getBytes(StandardCharsets.UTF_8))
         );
     }
@@ -70,7 +71,7 @@ public class HttpRequestLineParserTest {
         //Act + Assert
         assertThrows(
                 IllegalArgumentException.class,
-                () -> parser.parseHttpRequestLine(
+                () -> parser.parse(
                         rawHeader.getBytes(StandardCharsets.UTF_8))
         );
     }
@@ -85,7 +86,7 @@ public class HttpRequestLineParserTest {
         //Act + Assert
         assertThrows(
                 IllegalArgumentException.class,
-                () -> parser.parseHttpRequestLine(
+                () -> parser.parse(
                         rawHeader.getBytes(StandardCharsets.UTF_8))
         );
     }
@@ -98,7 +99,7 @@ public class HttpRequestLineParserTest {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> parser.parseHttpRequestLine(
+                () -> parser.parse(
                         rawHeader.getBytes(StandardCharsets.US_ASCII)
                 )
         );

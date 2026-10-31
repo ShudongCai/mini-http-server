@@ -1,4 +1,4 @@
-package dev.learning;
+package dev.learning.request.model;
 
 import org.junit.jupiter.api.Test;
 
@@ -7,10 +7,10 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class HttpHeadersTest {
+public class HttpHeaderFieldsTest {
     @Test
     void shouldIgnoreHeaderNameCase() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaderFields headers = new HttpHeaderFields();
 
         headers.add("Accept", "application/json");
         headers.add("accept", "text/html");
@@ -23,7 +23,7 @@ public class HttpHeadersTest {
 
     @Test
     void shouldRejectInvalidHeaderName() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaderFields headers = new HttpHeaderFields();
 
         assertThrows(
                 IllegalArgumentException.class,
@@ -33,7 +33,7 @@ public class HttpHeadersTest {
 
     @Test
     void shouldNotExposeMutableValues() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaderFields headers = new HttpHeaderFields();
 
         headers.add("Accept", "application/json");
 
@@ -47,7 +47,7 @@ public class HttpHeadersTest {
 
     @Test
     void shouldAcceptHyphenatedHeaderName() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaderFields headers = new HttpHeaderFields();
 
         headers.add("Content-Type", "application/json");
 
@@ -59,14 +59,14 @@ public class HttpHeadersTest {
 
     @Test
     void shouldReturnEmptyListForMissingHeader() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaderFields headers = new HttpHeaderFields();
 
         assertEquals(List.of(), headers.get("missing"));
     }
 
     @Test
     void shouldRejectHeaderValueContainingCRLF() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaderFields headers = new HttpHeaderFields();
 
         assertThrows(
                 IllegalArgumentException.class,
@@ -79,7 +79,7 @@ public class HttpHeadersTest {
 
     @Test
     void shouldAcceptTabInsideHeaderValue() {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaderFields headers = new HttpHeaderFields();
 
         headers.add("X-Test", "Hello\tWorld");
 
