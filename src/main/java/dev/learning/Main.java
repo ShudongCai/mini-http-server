@@ -1,17 +1,37 @@
 package dev.learning;
 
-//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+import dev.learning.request.HttpRequestHeadReader;
+import dev.learning.server.DemoHttpServer;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
 public class Main {
     public static void main(String[] args) {
-        //TIP Press <shortcut actionId="ShowIntentionActions"/> with your caret at the highlighted text
-        // to see how IntelliJ IDEA suggests fixing it.
-        System.out.printf("Hello and welcome!");
+        ByteArrayInputStream stream = new ByteArrayInputStream(
+                ("GET /a HTTP/1.1\r\n" +
+                        "Host: localhost\r\n" +
+                        "\r\n" +
+                        "GET /b HTTP/1.1\r\n" +
+                        "Host: localhost\r\n" +
+                        "\r\n" +
+                        "GET /c").getBytes(StandardCharsets.UTF_8)
+        );
 
-        for (int i = 1; i <= 5; i++) {
-            //TIP Press <shortcut actionId="Debug"/> to start debugging your code. We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-            // for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.
-            System.out.println("i = " + i);
+        HttpRequestHeadReader reader = new HttpRequestHeadReader();
+
+        try {
+            reader.readHead(stream);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
+
+//        DemoHttpServer demoHttpServer = new DemoHttpServer(8080);
+//        demoHttpServer.listen();
+//
+//        demoHttpServer.acceptAndRespondOnce();
+//
+//        demoHttpServer.close();
     }
 }
