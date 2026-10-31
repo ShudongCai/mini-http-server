@@ -47,6 +47,7 @@ public class HttpHeaders {
     }
 
     public List<String> get(String name) {
+        Objects.requireNonNull(name, "Header name must not be null");
         String normalizedName = name.toUpperCase(Locale.ROOT);
         return List.copyOf(headers.getOrDefault(normalizedName, List.of()));
     }
