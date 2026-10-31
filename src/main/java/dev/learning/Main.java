@@ -1,7 +1,6 @@
 package dev.learning;
 
-import dev.learning.request.HttpRequestHeadReader;
-import dev.learning.server.DemoHttpServer;
+import dev.learning.request.reader.HttpRequestReader;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -19,7 +18,7 @@ public class Main {
                         "GET /c").getBytes(StandardCharsets.UTF_8)
         );
 
-        HttpRequestHeadReader reader = new HttpRequestHeadReader();
+        HttpRequestReader reader = new HttpRequestReader();
 
         try {
             reader.readHead(stream);
