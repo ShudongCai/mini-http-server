@@ -1,6 +1,6 @@
 package dev.learning.request.parser;
 
-import dev.learning.request.model.HttpRequest;
+import dev.learning.request.model.HttpRequestHeader;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -80,30 +80,30 @@ public class HttpRequestHeadParserTest {
         HttpRequestHeadParser parser = new HttpRequestHeadParser();
 
         //Act
-        HttpRequest actual = parser.parse(request.getBytes(StandardCharsets.UTF_8));
+        HttpRequestHeader actual = parser.parse(request.getBytes(StandardCharsets.UTF_8));
 
         //Assert
-        assertNotNull(actual.getHttpHeaderFields());
-        assertNotNull(actual.getHttpRequestLine());
+        assertNotNull(actual.requestLine());
+        assertNotNull(actual.headerFields());
 
         assertEquals(
                 "GET",
-                actual.getHttpRequestLine().method()
+                actual.requestLine().method()
         );
 
         assertEquals(
                 "/",
-                actual.getHttpRequestLine().target()
+                actual.requestLine().target()
         );
 
         assertEquals(
                 "HTTP/1.1",
-                actual.getHttpRequestLine().version()
+                actual.requestLine().version()
         );
 
         assertEquals(
                 List.of("localhost"),
-                actual.getHttpHeaderFields().get("Host")
+                actual.headerFields().get("Host")
         );
     }
 }
