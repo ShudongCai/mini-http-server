@@ -1,13 +1,18 @@
 package dev.learning.server;
 
+import dev.learning.request.HttpRequestDecoder;
+import dev.learning.request.model.HttpRequest;
 import dev.learning.response.HttpResponse;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 
 
 public class DemoHttpServer {
@@ -28,6 +33,30 @@ public class DemoHttpServer {
 
     public void acceptAndRespondOnce() {
         try(Socket socket = serverSocket.accept()) {
+            System.out.println(
+                    "Accepted connection from: " + socket.getRemoteSocketAddress()
+            );
+
+            HttpRequestDecoder decoder = new HttpRequestDecoder();
+            InputStream input = socket.getInputStream();
+
+            HttpRequest request = decoder.decode(input);
+
+            if (request == null) {
+                System.out.println("Client closed connection without sending a request");
+                return;
+            }
+
+            System.out.println(
+                    request.getHttpRequestHeader().requestLine().method()
+                    + " " + request.getHttpRequestHeader().requestLine().target()
+                    + " " + request.getHttpRequestHeader().requestLine().version()
+            );
+            printHeadersAndContents(request.getHttpRequestHeader().headerFields().getHeaders());
+            System.out.println(
+                    new String(request.getHttpBody(), StandardCharsets.UTF_8)
+            );
+
             OutputStream output = socket.getOutputStream();
             HttpResponse httpHeader = HttpResponse.builder().setContent("HelloWorld! HI! Hi!").build();
             System.out.println(httpHeader.toHttpString());
@@ -44,6 +73,19 @@ public class DemoHttpServer {
             serverSocket.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private void printHeadersAndContents(Map<String, List<String>> input) {
+        for (Map.Entry<String, List<String>> entry : input.entrySet()) {
+            String key = entry.getKey();
+            List<String> list = entry.getValue();
+
+            for (String content : list) {
+                System.out.println(
+                        key + ": " + content
+                );
+            }
         }
     }
 
