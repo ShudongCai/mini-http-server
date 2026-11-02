@@ -43,7 +43,7 @@ class DemoHttpServerEndToEndTest {
     }
 
     private String sendRequest(String request) throws Exception {
-        DemoHttpServer server = new DemoHttpServer(0);
+        DemoHttpServer server = new DemoHttpServer(0, null);
         server.listen();
         Thread serverThread = null;
 
