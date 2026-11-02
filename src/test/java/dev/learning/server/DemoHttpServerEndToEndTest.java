@@ -1,5 +1,7 @@
 package dev.learning.server;
 
+import dev.learning.response.HttpResponse;
+import dev.learning.router.HttpRouter;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -17,7 +19,7 @@ class DemoHttpServerEndToEndTest {
     @Test
     void shouldReturnOnly200OKForValidGet() throws Exception {
         String response = sendRequest(
-                "GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"
+                "GET /hello HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
         );
 
         assertSingleResponse(response, "HTTP/1.1 200 OK");
@@ -43,7 +45,10 @@ class DemoHttpServerEndToEndTest {
     }
 
     private String sendRequest(String request) throws Exception {
-        DemoHttpServer server = new DemoHttpServer(0, null);
+        HttpRouter router = new HttpRouter();
+        router.register("GET", "/hello", incoming ->
+                HttpResponse.builder().setContent("Hello World").build());
+        DemoHttpServer server = new DemoHttpServer(0, router);
         server.listen();
         Thread serverThread = null;
 
