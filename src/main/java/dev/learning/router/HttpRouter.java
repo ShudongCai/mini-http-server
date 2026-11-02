@@ -29,6 +29,7 @@ public class HttpRouter {
                     .setStatusCode(404)
                     .setReasonPhrase("Not Found")
                     .setContent("Not Found")
+                    .setConnection("keep-alive")
                     .build();
         }
 
@@ -39,6 +40,7 @@ public class HttpRouter {
                     .setStatusCode(404)
                     .setReasonPhrase("Not Found")
                     .setContent("Not Found")
+                    .setConnection("keep-alive")
                     .build();
         }
 

@@ -36,45 +36,8 @@ public class DemoHttpServer {
     }
 
     public void acceptAndRespondOnce() {
-        try(Socket socket = serverSocket.accept()) {
-            HttpRequestDecoder decoder = new HttpRequestDecoder();
-            InputStream input = socket.getInputStream();
-            OutputStream output = socket.getOutputStream();
-            HttpResponse resposne;
-
-            try {
-                HttpRequest request = decoder.decode(input);
-
-                if (request == null) {
-                    System.out.println("Client closed connection without sending a request");
-                    return;
-                }
-
-                System.out.println(
-                        request.getHttpRequestHeader().requestLine().method()
-                                + " " + request.getHttpRequestHeader().requestLine().target()
-                                + " " + request.getHttpRequestHeader().requestLine().version()
-                );
-                printHeadersAndContents(request.getHttpRequestHeader().headerFields().getHeaders());
-                System.out.println(
-                        new String(request.getHttpBody(), StandardCharsets.UTF_8)
-                );
-
-                resposne = router.route(request);
-            } catch(IllegalArgumentException | EOFException e) {
-                resposne = HttpResponse.builder()
-                        .setStatusCode(400)
-                        .setReasonPhrase("Bad Request")
-                        .setContent("Bad Request")
-                        .build();
-            } catch (UnsupportedOperationException e) {
-                resposne = HttpResponse.builder()
-                        .setStatusCode(501)
-                        .setReasonPhrase("Not Implemented")
-                        .setContent("Not Implemented")
-                        .build();
-            }
-            output.write(resposne.toHttpString().getBytes(StandardCharsets.UTF_8));
+        try (Socket socket = serverSocket.accept()) {
+            handleConnection(socket);
         }
         catch (SocketTimeoutException e) {
             System.out.println("Client read timeout");
@@ -102,5 +65,99 @@ public class DemoHttpServer {
                 );
             }
         }
+    }
+
+    private void handleConnection(Socket socket) throws IOException {
+        HttpRequestDecoder decoder = new HttpRequestDecoder();
+        InputStream input = socket.getInputStream();
+        OutputStream output = socket.getOutputStream();
+        socket.setSoTimeout(30_000);
+
+        while (true) {
+            HttpRequest request;
+            try {
+                request = decoder.decode(input);
+
+                if (request == null) {
+                    System.out.println("Client closed connection");
+                    return;
+                }
+            } catch (IllegalArgumentException | EOFException e) {
+                writeResponse(
+                        output,
+                        errorResponse(400, "Bad Request"),
+                        true
+                );
+                return;
+            } catch (UnsupportedOperationException e) {
+                writeResponse(
+                        output,
+                        errorResponse(501, "Not Implemented"),
+                        true
+                );
+                return;
+            }
+
+            logRequest(request);
+
+            boolean close = hasCloseOption(request);
+            HttpResponse response = handleRequest(request);
+            writeResponse(output, response, close);
+
+            if (close) {
+                return;
+            }
+        }
+    }
+
+    private HttpResponse handleRequest(HttpRequest request) {
+        return this.router.route(request);
+    }
+
+    private HttpResponse errorResponse(int statusCode, String content) {
+        return HttpResponse.builder()
+                .setStatusCode(statusCode)
+                .setReasonPhrase(content)
+                .setContent(content)
+                .setConnection("close")
+                .build();
+    }
+
+    private void writeResponse(OutputStream output, HttpResponse response, boolean close) throws IOException {
+        response.setConnection(
+                close ? "close" : "keep-alive"
+        );
+
+        output.write(response.toHttpString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void logRequest(HttpRequest request) {
+        System.out.println(
+                request.getHttpRequestHeader().requestLine().method()
+                        + " " + request.getHttpRequestHeader().requestLine().target()
+                        + " " + request.getHttpRequestHeader().requestLine().version()
+        );
+        printHeadersAndContents(request.getHttpRequestHeader().headerFields().getHeaders());
+        System.out.println(
+                new String(request.getHttpBody(), StandardCharsets.UTF_8)
+        );
+    }
+
+    private boolean hasCloseOption(HttpRequest request) {
+        List<String> connections =
+                request.getHttpRequestHeader().headerFields().get("connection");
+
+        for (String connection : connections) {
+            String[] connectionValues = connection.split(",");
+
+            for (String value : connectionValues) {
+                if (value.trim().equalsIgnoreCase("close")) {
+                    return true;
+                }
+            }
+
+        }
+
+        return false;
     }
 }
