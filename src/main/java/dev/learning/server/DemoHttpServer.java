@@ -16,17 +16,52 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
-
+/**
+ * This class implements a basic HTTP server.
+ * The server waits for incoming HTTP requests over the network.
+ *
+ * <p>The server supports the following operations:
+ * <ul>
+ *      <li>Accepting TCP connections</li>
+ *      <li>Routing HTTP requests to registered handlers</li>
+ *      <li>Handling multiple requests on the same connection</li>
+ * </ul>
+ *
+ * <p>Connections are handled synchronously on the calling thread;
+ * this class does not create background worker threads.
+ *
+ * <p>Before sending a response, the server overwrites its Connection header
+ * according to the connection policy. Handler-supplied Connection settings
+ * do not control the socket lifecycle.
+ */
 public class DemoHttpServer {
     private ServerSocket serverSocket;
     private final HttpRouter router;
     private final int port;
 
+    /**
+     * Creates an HTTP server configured with the specified port and router.
+     *
+     * <p>The server socket is bound when {@link #listen()} is called.
+     *
+     * @param port the port on which the server will listen, or zero to let
+     *             the operating system assign a port when the socket is bound
+     * @param router the router used to dispatch decoded HTTP requests;
+     *               must not be null
+     */
     public DemoHttpServer(int port, HttpRouter router) {
         this.port = port;
         this.router = router;
     }
 
+    /**
+     * Creates a server socket bound to the configured port.
+     *
+     * <p>This method does not accept client connections.
+     *
+     * @throws RuntimeException if an I/O error occurs while creating
+     *         or binding the server socket
+     */
     public void listen() {
         try {
             serverSocket = new ServerSocket(port);
@@ -35,17 +70,49 @@ public class DemoHttpServer {
         }
     }
 
+    /**
+     * Accepts one TCP connection and handles HTTP requests on that connection.
+     *
+     * <p>This method blocks while waiting for a connection and while handling it.
+     * Multiple requests may be handled before the connection is closed.
+     * The accepted socket is closed when handling finishes or fails.
+     *
+     * <p>After a normal response, the connection remains open unless the request
+     * includes the Connection: close option. If the input ends between requests,
+     * no further response is sent.
+     *
+     * <p>If request decoding throws {@link IllegalArgumentException} or
+     * {@link EOFException}, the server attempts to send a 400 Bad Request response.
+     * If decoding throws {@link UnsupportedOperationException}, it attempts to send
+     * a 501 Not Implemented response. In either case, the connection is closed
+     * after the response attempt.
+     *
+     * <p>Socket reads use a 30-second timeout. Socket read timeouts and other
+     * I/O errors are logged rather than propagated to the caller. Runtime
+     * exceptions from request handlers propagate to the caller and are not
+     * converted into HTTP error responses.
+     *
+     * <p>The server must be listening before this method is called.
+     */
     public void acceptAndRespondOnce() {
         try (Socket socket = serverSocket.accept()) {
             handleConnection(socket);
-        }
-        catch (SocketTimeoutException e) {
+        } catch (SocketTimeoutException e) {
             System.out.println("Client read timeout");
         } catch (IOException e) {
             System.out.println("I/O error: " + e.getMessage());
         }
     }
 
+    /**
+     * Closes the listening server socket.
+     *
+     * <p>This method does not close an already accepted client connection.
+     * {@link #listen()} must be called successfully before this method.
+     *
+     * @throws RuntimeException if an I/O error occurs while closing
+     *         the server socket
+     */
     public void close() {
         try {
             serverSocket.close();
