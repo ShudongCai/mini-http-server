@@ -3,6 +3,7 @@ package dev.learning.server;
 import dev.learning.request.HttpRequestDecoder;
 import dev.learning.request.model.HttpRequest;
 import dev.learning.response.HttpResponse;
+import dev.learning.router.HttpRouter;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -18,10 +19,12 @@ import java.util.Map;
 
 public class DemoHttpServer {
     private ServerSocket serverSocket;
+    private final HttpRouter router;
     private final int port;
 
-    public DemoHttpServer(int port) {
+    public DemoHttpServer(int port, HttpRouter router) {
         this.port = port;
+        this.router = router;
     }
 
     public void listen() {
@@ -57,7 +60,7 @@ public class DemoHttpServer {
                         new String(request.getHttpBody(), StandardCharsets.UTF_8)
                 );
 
-                resposne = HttpResponse.builder().setContent("HelloWorld! HI! Hi!").build();
+                resposne = router.route(request);
             } catch(IllegalArgumentException | EOFException e) {
                 resposne = HttpResponse.builder()
                         .setStatusCode(400)
