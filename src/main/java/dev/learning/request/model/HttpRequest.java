@@ -1,19 +1,19 @@
 package dev.learning.request.model;
 
 public class HttpRequest {
-    private final HttpRequestLine httpRequestLine;
-    private final HttpHeaderFields httpHeaderFields;
+    private final HttpRequestHeader httpRequestHeader;
+    private final byte[] httpBody;
 
-    public HttpRequest(HttpRequestLine httpRequestLine, HttpHeaderFields httpHeaderFields) {
-        this.httpRequestLine = httpRequestLine;
-        this.httpHeaderFields = httpHeaderFields;
+    public HttpRequest(HttpRequestHeader httpRequestHeader, byte[] httpBody) {
+        this.httpRequestHeader = httpRequestHeader;
+        this.httpBody = httpBody;
     }
 
-    public HttpRequestLine getHttpRequestLine() {
-        return httpRequestLine;
+    public HttpRequestHeader getHttpRequestHeader() {
+        return httpRequestHeader;
     }
 
-    public HttpHeaderFields getHttpHeaderFields() {
-        return httpHeaderFields;
+    public byte[] getHttpBody() {
+        return httpBody;
     }
 }

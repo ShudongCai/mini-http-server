@@ -51,4 +51,8 @@ public class HttpHeaderFields {
         String normalizedName = name.toUpperCase(Locale.ROOT);
         return List.copyOf(headers.getOrDefault(normalizedName, List.of()));
     }
+
+    public Map<String, List<String>> getHeaders() {
+        return headers;
+    }
 }
