@@ -10,6 +10,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
@@ -50,7 +51,7 @@ class DemoHttpServerEndToEndTest {
                 HttpResponse.builder().setContent("Hello World").build());
         DemoHttpServer server = new DemoHttpServer(0, router);
         server.listen();
-        Thread serverThread = null;
+        Thread acceptThread = null;
 
         try {
             // The public API does not expose the OS-assigned port; keep this access in test setup.
@@ -58,8 +59,8 @@ class DemoHttpServerEndToEndTest {
             socketField.setAccessible(true);
             ServerSocket listeningSocket = (ServerSocket) socketField.get(server);
 
-            FutureTask<Void> handling = new FutureTask<>(server::acceptAndRespondOnce, null);
-            serverThread = Thread.ofPlatform().daemon(true).start(handling);
+            FutureTask<Void> acceptance = new FutureTask<>(server::acceptAndRespondOnce, null);
+            acceptThread = Thread.ofPlatform().daemon(true).start(acceptance);
 
             try (Socket client = new Socket()) {
                 client.connect(new InetSocketAddress("127.0.0.1", listeningSocket.getLocalPort()), 5000);
@@ -69,15 +70,21 @@ class DemoHttpServerEndToEndTest {
 
                 // Read until the server closes the connection, so any extra response is included.
                 String response = new String(client.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                handling.get(5, TimeUnit.SECONDS);
+                // This Future covers acceptance and submission, not the connection task.
+                acceptance.get(5, TimeUnit.SECONDS);
                 return response;
             }
         } finally {
             server.close();
-            if (serverThread != null) {
-                serverThread.join(5000);
-                assertFalse(serverThread.isAlive(), "Server thread did not stop");
+            if (acceptThread != null) {
+                acceptThread.join(5000);
+                assertFalse(acceptThread.isAlive(), "Accept thread did not stop");
             }
+            Field executorField = DemoHttpServer.class.getDeclaredField("executorService");
+            executorField.setAccessible(true);
+            ExecutorService connectionTasks = (ExecutorService) executorField.get(server);
+            assertTrue(connectionTasks.awaitTermination(5, TimeUnit.SECONDS),
+                    "Connection tasks did not stop after shutdown");
         }
     }
 

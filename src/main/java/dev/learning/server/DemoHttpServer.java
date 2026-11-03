@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -23,33 +24,35 @@ import java.util.concurrent.RejectedExecutionException;
  * Implements a basic HTTP server with concurrent connection handling.
  *
  * <p>The calling thread accepts one TCP connection per call to
- * {@link #acceptAndRespondOnce()} and submits it to an owned pool of four workers.
- * Submitted connection tasks wait in the executor queue when all workers are busy.
- * Each worker handles requests on its connection sequentially, using a separate
- * decoder for that connection, and may handle multiple requests before closing it.
+ * {@link #acceptAndRespondOnce()} and submits it to an owned virtual-thread-per-task
+ * executor. Each connection is handled on a separate virtual thread, which processes
+ * requests sequentially using a connection-specific decoder and may handle multiple
+ * requests before closing the socket.
  *
  * <p>Configure the shared router before accepting connections. Handlers may run
  * concurrently for different connections and must support concurrent invocation.
- * Before sending a response, the server overwrites its Connection header according
- * to the connection policy. Handlers must not share the same mutable response
- * instance across concurrent requests; handler-supplied Connection settings do not
- * control the socket lifecycle.
+ * Before sending a response, the server copies its status, reason phrase and content
+ * into a new response with a connection-specific Connection value. The immutable
+ * response returned by a handler is not modified and may be shared across concurrent
+ * requests. Handler-supplied Connection settings do not control the socket lifecycle.
  */
 public class DemoHttpServer {
     private ServerSocket serverSocket;
     private final HttpRouter router;
     private final int port;
     private final ExecutorService executorService;
+    private volatile boolean running = false;
 
     /**
      * Creates an HTTP server configured with the specified port and shared router.
      *
-     * <p>The constructor creates the executor; worker threads are started as tasks
-     * are submitted. The server socket is bound when {@link #listen()} is called.
+     * <p>The constructor creates the virtual-thread-per-task executor. A virtual thread
+     * is started for each submitted connection task. The server socket is bound when
+     * {@link #listen()} is called.
      *
      * @param port the port on which the server will listen, or zero to let
      *             the operating system assign a port when the socket is bound
-     * @param router the router shared by connection workers; must not be null and
+     * @param router the router shared by connection tasks; must not be null and
      *               should be configured before accepting connections
      */
     public DemoHttpServer(int port, HttpRouter router) {
@@ -69,6 +72,7 @@ public class DemoHttpServer {
     public void listen() {
         try {
             serverSocket = new ServerSocket(port);
+            running = true;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -78,8 +82,8 @@ public class DemoHttpServer {
      * Accepts one TCP connection and submits it for asynchronous handling.
      *
      * <p>This method blocks while waiting for a connection, then returns after task
-     * submission without waiting for request handling to finish. A worker handles
-     * requests on that connection sequentially and closes the accepted socket when
+     * submission without waiting for request handling to finish. A virtual thread
+     * handles requests on that connection sequentially and closes the accepted socket when
      * handling finishes or fails. If submission is rejected, this method attempts to
      * close the accepted socket before propagating the rejection.
      *
@@ -88,14 +92,14 @@ public class DemoHttpServer {
      * no further response is sent.
      *
      * <p>If request decoding throws {@link IllegalArgumentException} or
-     * {@link EOFException}, the worker attempts to send a 400 Bad Request response.
+     * {@link EOFException}, the connection task attempts to send a 400 Bad Request response.
      * If decoding throws {@link UnsupportedOperationException}, it attempts to send
      * a 501 Not Implemented response. In either case, the connection is closed
      * after the response attempt.
      *
-     * <p>Socket reads use a 30-second timeout once a worker starts handling the
-     * connection; this does not limit time spent waiting in the executor queue.
-     * I/O errors during acceptance or worker execution, including socket read
+     * <p>Socket reads use a 30-second timeout, configured by the connection task;
+     * this is not a deadline for the task's total lifetime.
+     * I/O errors during acceptance or connection handling, including socket read
      * timeouts, are logged rather than propagated to the accept caller.
      * Runtime exceptions from handlers are captured in the submitted task's Future;
      * this class does not inspect that Future or convert those failures into HTTP
@@ -110,11 +114,14 @@ public class DemoHttpServer {
         try {
             Socket socket = serverSocket.accept();
             submitConnection(socket);
-        } catch (SocketTimeoutException e) {
-            System.out.println("Client read timeout");
-        } catch (IOException e) {
+        } catch (SocketException e) {
+            if (running) {
+                System.out.println("Accept failed: " + e.getMessage());
+            }
+        }
+        catch (IOException e) {
             System.out.println("I/O error: " + e.getMessage());
-        };
+        }
     }
 
     private void submitConnection(Socket socket) throws IOException{
@@ -140,9 +147,9 @@ public class DemoHttpServer {
      * Closes the listening server socket and initiates an orderly executor shutdown.
      *
      * <p>No new connection tasks are accepted by the executor after shutdown, but
-     * previously submitted tasks, including queued tasks, are allowed to finish.
+     * previously submitted tasks are allowed to finish.
      * This method does not wait for them or directly close their client sockets.
-     * Each worker remains responsible for closing the connection it handles.
+     * Each connection task remains responsible for closing its socket.
      *
      * <p>The executor is shut down even if closing the listening socket fails.
      * {@link #listen()} must be called successfully before this method. Calling
@@ -152,6 +159,8 @@ public class DemoHttpServer {
      *         the server socket
      */
     public void close() {
+        running = false;
+
         try {
             serverSocket.close();
         } catch (IOException e) {
@@ -159,6 +168,10 @@ public class DemoHttpServer {
         } finally {
             executorService.shutdown();
         }
+    }
+
+    public boolean isRunning() {
+        return running;
     }
 
     private void printHeadersAndContents(Map<String, List<String>> input) {
@@ -231,11 +244,14 @@ public class DemoHttpServer {
     }
 
     private void writeResponse(OutputStream output, HttpResponse response, boolean close) throws IOException {
-        response.setConnection(
-                close ? "close" : "keep-alive"
-        );
+        HttpResponse newResponse = HttpResponse.builder()
+                        .setConnection(close ? "close" : "keep-alive")
+                        .setReasonPhrase(response.getReasonPhrase())
+                        .setStatusCode(response.getStatusCode())
+                        .setContent(response.getContent())
+                        .build();
 
-        output.write(response.toHttpString().getBytes(StandardCharsets.UTF_8));
+        output.write(newResponse.toHttpString().getBytes(StandardCharsets.UTF_8));
     }
 
     private void logRequest(HttpRequest request) {

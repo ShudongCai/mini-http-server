@@ -7,7 +7,8 @@ import dev.learning.server.DemoHttpServer;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Entry point that registers the demo routes and serves connections sequentially on port 8080.
+ * Entry point that registers demo routes and accepts connections on port 8080.
+ * Each connection is handled asynchronously on its own virtual thread.
  */
 public class Main {
     public static void main(String[] args) {
@@ -39,7 +40,7 @@ public class Main {
         DemoHttpServer demoHttpServer = new DemoHttpServer(8080, router);
         demoHttpServer.listen();
 
-        while (true) {
+        while (demoHttpServer.isRunning()) {
             demoHttpServer.acceptAndRespondOnce();
         }
 
