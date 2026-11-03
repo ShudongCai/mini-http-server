@@ -6,6 +6,9 @@ import dev.learning.server.DemoHttpServer;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Entry point that registers the demo routes and serves connections sequentially on port 8080.
+ */
 public class Main {
     public static void main(String[] args) {
         HttpRouter router = new HttpRouter();

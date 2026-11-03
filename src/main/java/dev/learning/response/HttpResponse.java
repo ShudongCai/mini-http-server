@@ -2,6 +2,13 @@ package dev.learning.response;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * An HTTP/1.1 response with a text body and a mutable Connection header value.
+ *
+ * <p>Serialization uses a fixed text/plain content type with UTF-8 charset and a
+ * Content-Length measured in UTF-8 bytes. The demo server may overwrite Connection
+ * before sending the response; this class does not manage socket lifetimes.
+ */
 public class HttpResponse {
     private final int statusCode;
     private final String reasonPhrase;
@@ -15,6 +22,14 @@ public class HttpResponse {
         this.connection = connection;
     }
 
+    /**
+     * Serializes the status line, headers, empty line and text body to a string.
+     *
+     * <p>Encode the returned string as UTF-8 when sending it so the body length matches
+     * Content-Length. This method does not write to a stream.
+     *
+     * @return the complete HTTP/1.1 text representation
+     */
     public String toHttpString() {
         String length = String.valueOf(content.getBytes(StandardCharsets.UTF_8).length);
         return "HTTP/1.1 "+ statusCode + " " + reasonPhrase+ "\r\n" +
@@ -25,6 +40,11 @@ public class HttpResponse {
                 + content;
     }
 
+    /**
+     * Replaces the Connection header value without validation or normalization.
+     *
+     * @param connection the value to store; null is not replaced with a default
+     */
     public void setConnection(String connection) {
         this.connection = connection;
     }
@@ -33,12 +53,24 @@ public class HttpResponse {
         return new HttpResponseBuilder();
     }
 
+    /**
+     * Builds responses defaulting to 200 OK, an empty body and keep-alive.
+     *
+     * <p>Status code and reason phrase are independent: changing the code does not
+     * automatically update the phrase.
+     */
     public static class HttpResponseBuilder {
         private int statusCode = 200;
         private String reasonPhrase = "OK";
         private String content = "";
         private String connection = "keep-alive";
 
+        /**
+         * Sets the text body, treating null as an empty string.
+         *
+         * @param content the body text, or null for an empty body
+         * @return this builder
+         */
         public HttpResponseBuilder setContent(String content) {
             if (content == null) {
                 content = "";
@@ -48,6 +80,13 @@ public class HttpResponse {
             return this;
         }
 
+        /**
+         * Sets the status code without changing the reason phrase.
+         *
+         * @param statusCode a code from 100 through 599
+         * @return this builder
+         * @throws IllegalArgumentException if the code is outside that range
+         */
         public HttpResponseBuilder setStatusCode(int statusCode) {
             if (statusCode < 100 || statusCode > 599) {
                 throw new IllegalArgumentException("Invalid HTTP status code");
@@ -56,6 +95,12 @@ public class HttpResponse {
             return this;
         }
 
+        /**
+         * Sets the reason phrase, treating null as UNKNOWN.
+         *
+         * @param reasonPhrase the phrase to use, or null for UNKNOWN
+         * @return this builder
+         */
         public HttpResponseBuilder setReasonPhrase(String reasonPhrase) {
             if (reasonPhrase == null) {
                 reasonPhrase = "UNKNOWN";
@@ -64,6 +109,15 @@ public class HttpResponse {
             return this;
         }
 
+        /**
+         * Sets Connection, defaulting null to keep-alive.
+         *
+         * <p>If a comma-separated token equals close ignoring case, the stored value is
+         * close; otherwise the supplied text is retained. Tokens are not trimmed.
+         *
+         * @param connection the header value, or null for keep-alive
+         * @return this builder
+         */
         public HttpResponseBuilder setConnection(String connection) {
             if (connection == null ) {
                 connection = "keep-alive";

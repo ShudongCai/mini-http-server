@@ -5,8 +5,24 @@ import dev.learning.request.model.HttpHeaderFields;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Parses header fields from bytes without reading a stream or retaining request state.
+ */
 public class HttpHeaderFieldsParser {
 
+    /**
+     * Parses a header-field section ending with an empty CRLF line.
+     *
+     * <p>The input excludes the request line and body; nothing may follow the final
+     * empty line. Fields are decoded with ISO-8859-1 and validated by
+     * {@link HttpHeaderFields#add(String, String)}. Leading and trailing spaces and
+     * tabs are removed from values, while repeated fields retain their separate values.
+     *
+     * @param input CRLF-terminated field lines followed by the terminating empty line
+     * @return a new field collection; an input consisting only of CRLF produces an empty collection
+     * @throws IllegalArgumentException if the input is null, malformed, has invalid fields,
+     *         lacks the terminating empty line or contains trailing data
+     */
     public HttpHeaderFields parse(byte[] input) {
         if (input == null) {
             throw new IllegalArgumentException("Header input must not be null");

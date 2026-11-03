@@ -5,7 +5,20 @@ import dev.learning.request.model.HttpHeaderFields;
 
 import java.util.Arrays;
 
+/**
+ * Parses a complete request head by delegating request-line and header-field parsing.
+ *
+ * <p>This parser reads no stream, retains no request state and does not process the body.
+ */
 public class HttpRequestHeadParser {
+    /**
+     * Parses one complete head, excluding the request body and any subsequent request.
+     *
+     * @param input the request line and header fields, including the final empty CRLF line
+     * @return a new request header containing the parsed line and fields
+     * @throws IllegalArgumentException if the input is null, empty or rejected by either
+     *         component parser, including missing terminators or trailing data
+     */
     public HttpRequestHeader parse(byte[] input) {
         if (input == null || input.length < 1) {
             throw new IllegalArgumentException("The http header is invalid");

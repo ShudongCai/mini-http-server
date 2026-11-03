@@ -8,6 +8,13 @@ import dev.learning.request.reader.HttpRequestReader;
 import java.io.IOException;
 import java.io.InputStream;
 
+/**
+ * Decodes complete HTTP requests by combining byte reading, head parsing and body framing.
+ *
+ * <p>Each instance owns a stateful reader. Reuse it sequentially for one connection;
+ * it is not thread-safe and does not close the input stream. Bodies remain raw bytes.
+ * The decoder does not route requests, send responses or decide when to close a connection.
+ */
 public class HttpRequestDecoder {
     private static final int MAX_BODY_SIZE = 1024 * 1024;
 
@@ -19,6 +26,22 @@ public class HttpRequestDecoder {
         this.httpRequestHeadParser = new HttpRequestHeadParser();
     }
 
+    /**
+     * Decodes the next request from this connection's stream.
+     *
+     * <p>A single numeric Content-Length determines the body length, up to 1 MiB.
+     * Without Content-Length or Transfer-Encoding, the body is empty. Transfer-Encoding
+     * is not supported. Failed decoding does not guarantee that the stream can be reused.
+     *
+     * @param stream the input stream used for this connection
+     * @return a decoded request, or null at EOF between requests
+     * @throws java.io.EOFException if the head or body is incomplete at EOF
+     * @throws IllegalArgumentException if the head or framing fields are rejected,
+     *         the body exceeds 1 MiB, or the reader's pending capacity is exceeded
+     * @throws UnsupportedOperationException if a single Transfer-Encoding field is present
+     *         without Content-Length
+     * @throws IOException if another I/O error occurs
+     */
     public HttpRequest decode(InputStream stream) throws IOException {
         byte[] rawHeader = httpRequestReader.readHead(stream);
 

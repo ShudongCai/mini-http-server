@@ -4,8 +4,22 @@ import dev.learning.request.model.HttpRequestLine;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Parses request-line components from bytes without reading a stream or retaining request state.
+ */
 public class HttpRequestLineParser {
 
+    /**
+     * Parses the first CRLF-terminated request line using US-ASCII decoding.
+     *
+     * <p>Bytes after that line are ignored. This method checks separators and non-empty
+     * components, but does not fully validate method tokens, request targets or HTTP versions.
+     *
+     * @param input bytes beginning with a request line, including its CRLF
+     * @return the method, target and version extracted from the first line
+     * @throws NullPointerException if {@code input} is null
+     * @throws IllegalArgumentException if the required request-line structure is missing
+     */
     public HttpRequestLine parse(byte[] input) {
         int methodPosition = -1;
         int targetPosition = -1;
