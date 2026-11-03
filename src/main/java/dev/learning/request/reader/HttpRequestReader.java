@@ -5,6 +5,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 
+/**
+ * Reads request heads and fixed-length byte sequences without parsing HTTP fields.
+ *
+ * <p>Use one instance sequentially with the same connection's input stream. This
+ * class is not thread-safe and does not close the stream. Its pending buffer holds
+ * bytes already read from the stream but not yet consumed, including body bytes
+ * or bytes belonging to a later request. Failed reads do not roll back stream state.
+ */
 public class HttpRequestReader {
     private static final int MAX_HEADER_SIZE = 16 * 1024;
     private static final int READ_BUFFER_SIZE = 4 * 1024;
@@ -14,6 +22,19 @@ public class HttpRequestReader {
 
     private int pendingSize = 0;
 
+    /**
+     * Reads through the first CRLFCRLF terminator, including the terminator.
+     *
+     * <p>The returned bytes contain the request line and header fields; their syntax
+     * is not validated here. Any bytes read beyond the terminator remain pending
+     * for subsequent calls to this reader.
+     *
+     * @param stream the input stream for this connection
+     * @return the head bytes, or null if EOF is reached with no pending bytes
+     * @throws EOFException if EOF is reached with an incomplete head
+     * @throws IllegalArgumentException if a read would exceed the 16 KiB pending capacity
+     * @throws IOException if another I/O error occurs
+     */
     public byte[] readHead(InputStream stream) throws IOException{
         while (true) {
             int headerEnd = findHeadEnd();
@@ -80,6 +101,16 @@ public class HttpRequestReader {
         return bytesContent;
     }
 
+    /**
+     * Consumes pending bytes first, then reads only the additional bytes needed.
+     *
+     * @param stream the input stream for this connection
+     * @param byteCount the non-negative number of bytes to consume
+     * @return exactly {@code byteCount} bytes, or an empty array for zero
+     * @throws IllegalArgumentException if {@code byteCount} is negative
+     * @throws EOFException if fewer than {@code byteCount} bytes are available before EOF
+     * @throws IOException if another I/O error occurs
+     */
     public byte[] readExactly(InputStream stream, int byteCount) throws IOException {
         if (pendingSize >= byteCount) {
             return consume(byteCount);
