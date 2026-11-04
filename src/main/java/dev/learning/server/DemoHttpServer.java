@@ -16,10 +16,7 @@ import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Implements a basic HTTP server with concurrent connection handling.
@@ -38,11 +35,14 @@ import java.util.concurrent.TimeUnit;
  * requests. Handler-supplied Connection settings do not control the socket lifecycle.
  */
 public class DemoHttpServer {
+    private static final int MAX_CONNECTIONS = 100;
+
     private ServerSocket serverSocket;
     private final HttpRouter router;
     private final int port;
     private final ExecutorService executorService;
     private volatile boolean running = false;
+    private final Semaphore connectionPermits = new Semaphore(MAX_CONNECTIONS);
 
     /**
      * Creates an HTTP server configured with the specified port and shared router.
@@ -117,10 +117,20 @@ public class DemoHttpServer {
     public void acceptAndRespondOnce() {
         try {
             Socket socket = serverSocket.accept();
+
+            if (!running || !connectionPermits.tryAcquire()) {
+                socket.close();
+                return;
+            }
+
             submitConnection(socket);
         } catch (SocketException e) {
             if (running) {
                 System.out.println("Accept failed: " + e.getMessage());
+            }
+        } catch (RejectedExecutionException e) {
+            if (running) {
+                throw e;
             }
         }
         catch (IOException e) {
@@ -130,14 +140,18 @@ public class DemoHttpServer {
 
     private void submitConnection(Socket socket) throws IOException{
         try {
-            executorService.submit(() -> {
+            executorService.execute(() -> {
                 try(socket) {
                     handleConnection(socket);
                 } catch (IOException e) {
                     System.out.println("I/O error: " + e.getMessage());
+                } finally {
+                    connectionPermits.release();
                 }
             });
-        } catch(RejectedExecutionException e) {
+        } catch (RejectedExecutionException e) {
+            connectionPermits.release();
+
             try {
                 socket.close();
             } catch (IOException closeError) {
