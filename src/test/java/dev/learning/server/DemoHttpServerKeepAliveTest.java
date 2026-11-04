@@ -14,6 +14,8 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
@@ -27,8 +29,18 @@ class DemoHttpServerKeepAliveTest {
 
     private DemoHttpServer server;
     private Socket client;
-    private FutureTask<Void> handling;
-    private Thread serverThread;
+    private int port;
+    private ExecutorService connectionTasks;
+    private FutureTask<Void> acceptance;
+    private Thread acceptThread;
+    private final CountDownLatch sharedHandlersReady = new CountDownLatch(2);
+    private final HttpResponse sharedResponse = HttpResponse.builder()
+            .setStatusCode(202)
+            .setReasonPhrase("Accepted")
+            .setContent("Shared response")
+            // A distinct value exposes mutation regardless of which request finishes last.
+            .setConnection("handler-default")
+            .build();
 
     @BeforeEach
     void startServerAndConnect() throws Exception {
@@ -38,6 +50,18 @@ class DemoHttpServerKeepAliveTest {
         router.register("POST", "/echo", request -> HttpResponse.builder()
                 .setContent("You sent: " + new String(request.getHttpBody(), StandardCharsets.UTF_8))
                 .build());
+        router.register("GET", "/shared", request -> {
+            sharedHandlersReady.countDown();
+            try {
+                if (!sharedHandlersReady.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("The two handlers did not run concurrently");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while synchronizing handlers", e);
+            }
+            return sharedResponse;
+        });
 
         DemoHttpServer startedServer = new DemoHttpServer(0, router);
         startedServer.listen();
@@ -47,11 +71,15 @@ class DemoHttpServerKeepAliveTest {
         Field socketField = DemoHttpServer.class.getDeclaredField("serverSocket");
         socketField.setAccessible(true);
         ServerSocket listeningSocket = (ServerSocket) socketField.get(server);
+        port = listeningSocket.getLocalPort();
+        Field executorField = DemoHttpServer.class.getDeclaredField("executorService");
+        executorField.setAccessible(true);
+        connectionTasks = (ExecutorService) executorField.get(server);
 
-        handling = new FutureTask<>(server::acceptAndRespondOnce, null);
-        serverThread = Thread.ofPlatform().daemon(true).start(handling);
+        acceptance = new FutureTask<>(server::acceptAndRespondOnce, null);
+        acceptThread = Thread.ofPlatform().daemon(true).start(acceptance);
         client = new Socket();
-        client.connect(new InetSocketAddress("127.0.0.1", listeningSocket.getLocalPort()), 5000);
+        client.connect(new InetSocketAddress("127.0.0.1", port), 5000);
         client.setSoTimeout(5000);
     }
 
@@ -67,14 +95,18 @@ class DemoHttpServerKeepAliveTest {
                     server.close();
                 }
             } finally {
-                if (serverThread != null) {
-                    serverThread.join(5000);
-                    assertFalse(serverThread.isAlive(), "Server thread did not stop");
+                if (acceptThread != null) {
+                    acceptThread.join(5000);
+                    assertFalse(acceptThread.isAlive(), "Accept thread did not stop");
+                }
+                if (connectionTasks != null) {
+                    assertTrue(connectionTasks.awaitTermination(5, TimeUnit.SECONDS),
+                            "Connection tasks did not stop after shutdown");
                 }
             }
         }
-        if (handling != null) {
-            handling.get(5, TimeUnit.SECONDS);
+        if (acceptance != null) {
+            acceptance.get(5, TimeUnit.SECONDS);
         }
     }
 
@@ -121,12 +153,59 @@ class DemoHttpServerKeepAliveTest {
                 "Server must close the connection after the complete third response");
     }
 
-    private Response exchange(String request) throws Exception {
-        client.getOutputStream().write(request.getBytes(StandardCharsets.US_ASCII));
-        client.getOutputStream().flush();
+    @Test
+    void shouldNotModifySharedResponseAcrossConnections() throws Exception {
+        String originalResponse = sharedResponse.toHttpString();
+        acceptance.get(5, TimeUnit.SECONDS);
+        try (Socket closingClient = new Socket()) {
+            closingClient.connect(new InetSocketAddress("127.0.0.1", port), 5000);
+            closingClient.setSoTimeout(5000);
+            // The fixture accepts the first connection; accept and submit the second one here.
+            server.acceptAndRespondOnce();
 
+            sendRequest(client, "GET /shared HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            sendRequest(closingClient,
+                    "GET /shared HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+
+            Response keepAlive = readResponse(client);
+            Response closing = readResponse(closingClient);
+
+            assertEquals(0L, sharedHandlersReady.getCount());
+            assertEquals("HTTP/1.1 202 Accepted", keepAlive.statusLine());
+            assertEquals("HTTP/1.1 202 Accepted", closing.statusLine());
+            assertEquals("Shared response", keepAlive.body());
+            assertEquals("Shared response", closing.body());
+            assertEquals("keep-alive", keepAlive.connection());
+            assertEquals("close", closing.connection());
+            assertEquals(-1, closingClient.getInputStream().read(),
+                    "Only the connection requesting close must reach EOF");
+            assertEquals("handler-default", sharedResponse.getConnection());
+            assertEquals(originalResponse, sharedResponse.toHttpString());
+
+            // Prove the other connection remains usable, rather than trusting its header alone.
+            Response followUp = exchange(
+                    "GET /shared HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+            assertEquals("HTTP/1.1 202 Accepted", followUp.statusLine());
+            assertEquals("Shared response", followUp.body());
+            assertEquals("close", followUp.connection());
+            assertEquals(-1, client.getInputStream().read());
+            assertEquals(originalResponse, sharedResponse.toHttpString());
+        }
+    }
+
+    private Response exchange(String request) throws Exception {
+        sendRequest(client, request);
+        return readResponse(client);
+    }
+
+    private void sendRequest(Socket connection, String request) throws Exception {
+        connection.getOutputStream().write(request.getBytes(StandardCharsets.US_ASCII));
+        connection.getOutputStream().flush();
+    }
+
+    private Response readResponse(Socket socket) throws Exception {
         // Frame each response by Content-Length: keep-alive does not end at EOF.
-        InputStream input = client.getInputStream();
+        InputStream input = socket.getInputStream();
         String statusLine = readLine(input);
         int contentLength = -1;
         String connection = null;

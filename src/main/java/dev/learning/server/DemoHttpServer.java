@@ -11,45 +11,49 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.*;
 
 /**
  * Implements a basic HTTP server with concurrent connection handling.
  *
  * <p>The calling thread accepts one TCP connection per call to
- * {@link #acceptAndRespondOnce()} and submits it to an owned pool of four workers.
- * Submitted connection tasks wait in the executor queue when all workers are busy.
- * Each worker handles requests on its connection sequentially, using a separate
- * decoder for that connection, and may handle multiple requests before closing it.
+ * {@link #acceptAndRespondOnce()} and submits it to an owned virtual-thread-per-task
+ * executor. Each connection is handled on a separate virtual thread, which processes
+ * requests sequentially using a connection-specific decoder and may handle multiple
+ * requests before closing the socket.
  *
  * <p>Configure the shared router before accepting connections. Handlers may run
  * concurrently for different connections and must support concurrent invocation.
- * Before sending a response, the server overwrites its Connection header according
- * to the connection policy. Handlers must not share the same mutable response
- * instance across concurrent requests; handler-supplied Connection settings do not
- * control the socket lifecycle.
+ * Before sending a response, the server copies its status, reason phrase and content
+ * into a new response with a connection-specific Connection value. The immutable
+ * response returned by a handler is not modified and may be shared across concurrent
+ * requests. Handler-supplied Connection settings do not control the socket lifecycle.
  */
 public class DemoHttpServer {
+    private static final int MAX_CONNECTIONS = 100;
+
     private ServerSocket serverSocket;
     private final HttpRouter router;
     private final int port;
     private final ExecutorService executorService;
+    private volatile boolean running = false;
+    private final Semaphore connectionPermits = new Semaphore(MAX_CONNECTIONS);
 
     /**
      * Creates an HTTP server configured with the specified port and shared router.
      *
-     * <p>The constructor creates the executor; worker threads are started as tasks
-     * are submitted. The server socket is bound when {@link #listen()} is called.
+     * <p>The constructor creates the virtual-thread-per-task executor. A virtual thread
+     * is started for each submitted connection task. The server socket is bound when
+     * {@link #listen()} is called.
      *
      * @param port the port on which the server will listen, or zero to let
      *             the operating system assign a port when the socket is bound
-     * @param router the router shared by connection workers; must not be null and
+     * @param router the router shared by connection tasks; must not be null and
      *               should be configured before accepting connections
      */
     public DemoHttpServer(int port, HttpRouter router) {
@@ -59,7 +63,7 @@ public class DemoHttpServer {
     }
 
     /**
-     * Creates a server socket bound to the configured port.
+     * Creates a server socket bound to the configured port and marks the server as running.
      *
      * <p>This method does not accept client connections or start an accept loop.
      *
@@ -69,6 +73,7 @@ public class DemoHttpServer {
     public void listen() {
         try {
             serverSocket = new ServerSocket(port);
+            running = true;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -78,25 +83,28 @@ public class DemoHttpServer {
      * Accepts one TCP connection and submits it for asynchronous handling.
      *
      * <p>This method blocks while waiting for a connection, then returns after task
-     * submission without waiting for request handling to finish. A worker handles
-     * requests on that connection sequentially and closes the accepted socket when
-     * handling finishes or fails. If submission is rejected, this method attempts to
-     * close the accepted socket before propagating the rejection.
+     * submission without waiting for request handling to finish. A virtual thread
+     * handles requests on that connection sequentially and closes the accepted socket
+     * when handling finishes or fails. If submission is rejected, this method attempts
+     * to close the accepted socket before propagating the rejection.
      *
-     * <p>After a normal response, the connection remains open unless the request
-     * includes the Connection: close option. If the input ends between requests,
-     * no further response is sent.
+     * <p>Before writing a normal response, the connection policy checks the request's
+     * Connection: close option and the running flag. If the request asks to close or
+     * shutdown has been observed, the response uses Connection: close and the connection
+     * is closed afterward. If input ends between requests, no further response is sent.
      *
      * <p>If request decoding throws {@link IllegalArgumentException} or
-     * {@link EOFException}, the worker attempts to send a 400 Bad Request response.
+     * {@link EOFException}, the connection task attempts to send a 400 Bad Request response.
      * If decoding throws {@link UnsupportedOperationException}, it attempts to send
      * a 501 Not Implemented response. In either case, the connection is closed
      * after the response attempt.
      *
-     * <p>Socket reads use a 30-second timeout once a worker starts handling the
-     * connection; this does not limit time spent waiting in the executor queue.
-     * I/O errors during acceptance or worker execution, including socket read
-     * timeouts, are logged rather than propagated to the accept caller.
+     * <p>Closing the listening socket unblocks a pending accept call. The resulting
+     * {@link SocketException} is ignored once shutdown has begun, allowing the caller's
+     * accept loop to exit by checking {@link #isRunning()}.
+     * Other I/O errors, including connection read timeouts, are logged rather than
+     * propagated to the accept caller. Socket reads use a 30-second timeout; this is
+     * not a deadline for the connection task's total lifetime.
      * Runtime exceptions from handlers are captured in the submitted task's Future;
      * this class does not inspect that Future or convert those failures into HTTP
      * error responses.
@@ -104,29 +112,46 @@ public class DemoHttpServer {
      * <p>The server must be listening and the executor must not have been shut down.
      *
      * @throws RejectedExecutionException if the executor rejects the connection task,
-     *         for example after shutdown
+     *         for example when acceptance races with shutdown
      */
     public void acceptAndRespondOnce() {
         try {
             Socket socket = serverSocket.accept();
+
+            if (!running || !connectionPermits.tryAcquire()) {
+                socket.close();
+                return;
+            }
+
             submitConnection(socket);
-        } catch (SocketTimeoutException e) {
-            System.out.println("Client read timeout");
-        } catch (IOException e) {
+        } catch (SocketException e) {
+            if (running) {
+                System.out.println("Accept failed: " + e.getMessage());
+            }
+        } catch (RejectedExecutionException e) {
+            if (running) {
+                throw e;
+            }
+        }
+        catch (IOException e) {
             System.out.println("I/O error: " + e.getMessage());
-        };
+        }
     }
 
     private void submitConnection(Socket socket) throws IOException{
         try {
-            executorService.submit(() -> {
+            executorService.execute(() -> {
                 try(socket) {
                     handleConnection(socket);
                 } catch (IOException e) {
                     System.out.println("I/O error: " + e.getMessage());
+                } finally {
+                    connectionPermits.release();
                 }
             });
-        } catch(RejectedExecutionException e) {
+        } catch (RejectedExecutionException e) {
+            connectionPermits.release();
+
             try {
                 socket.close();
             } catch (IOException closeError) {
@@ -137,28 +162,64 @@ public class DemoHttpServer {
     }
 
     /**
-     * Closes the listening server socket and initiates an orderly executor shutdown.
+     * Marks the server as stopped, closes the listener and waits for connection tasks to finish.
      *
-     * <p>No new connection tasks are accepted by the executor after shutdown, but
-     * previously submitted tasks, including queued tasks, are allowed to finish.
-     * This method does not wait for them or directly close their client sockets.
-     * Each worker remains responsible for closing the connection it handles.
+     * <p>The running flag is cleared before the listening socket is closed, unblocking
+     * a pending accept call. The executor then stops accepting new tasks and waits up
+     * to 10 seconds for previously submitted tasks to complete. A request whose
+     * connection policy observes shutdown is replied to with Connection: close.
+     * Idle keep-alive reads may remain blocked during this grace period.
      *
-     * <p>The executor is shut down even if closing the listening socket fails.
-     * {@link #listen()} must be called successfully before this method. Calling
+     * <p>If tasks remain after the grace period, this method requests interruption via
+     * {@link ExecutorService#shutdownNow()} and waits up to 2 more seconds. Connection
+     * tasks close their sockets on exit. Task termination is not guaranteed: if tasks
+     * still remain after the second wait, a message is logged and this method returns.
+     *
+     * <p>If the caller is interrupted while waiting, remaining tasks are interrupted
+     * immediately and the caller's interrupt status is restored, without another wait.
+     * Executor shutdown is attempted even if closing the listening socket fails.
+     *
+     * <p>{@link #listen()} must be called successfully before this method. Calling
      * listen again does not restart the executor after shutdown.
      *
-     * @throws RuntimeException if an I/O error occurs while closing
-     *         the server socket
+     * @throws RuntimeException if an I/O error occurs while closing the listening socket
      */
     public void close() {
+        running = false;
+
         try {
             serverSocket.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
         } finally {
             executorService.shutdown();
+
+            try {
+                if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+
+                    if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
+                        System.out.println("Executor did not terminate");
+                    }
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
+    }
+
+    /**
+     * Returns the lifecycle flag used to control the caller's accept loop.
+     *
+     * <p>The flag becomes true after a successful {@link #listen()} call and false as
+     * soon as {@link #close()} begins. A false value does not imply that all connection
+     * tasks have terminated.
+     *
+     * @return the current running flag
+     */
+    public boolean isRunning() {
+        return running;
     }
 
     private void printHeadersAndContents(Map<String, List<String>> input) {
@@ -207,8 +268,8 @@ public class DemoHttpServer {
 
             logRequest(request);
 
-            boolean close = hasCloseOption(request);
             HttpResponse response = handleRequest(request);
+            boolean close = hasCloseOption(request) || !running;
             writeResponse(output, response, close);
 
             if (close) {
@@ -231,11 +292,14 @@ public class DemoHttpServer {
     }
 
     private void writeResponse(OutputStream output, HttpResponse response, boolean close) throws IOException {
-        response.setConnection(
-                close ? "close" : "keep-alive"
-        );
+        HttpResponse newResponse = HttpResponse.builder()
+                        .setConnection(close ? "close" : "keep-alive")
+                        .setReasonPhrase(response.getReasonPhrase())
+                        .setStatusCode(response.getStatusCode())
+                        .setContent(response.getContent())
+                        .build();
 
-        output.write(response.toHttpString().getBytes(StandardCharsets.UTF_8));
+        output.write(newResponse.toHttpString().getBytes(StandardCharsets.UTF_8));
     }
 
     private void logRequest(HttpRequest request) {

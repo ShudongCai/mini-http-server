@@ -7,7 +7,12 @@ import dev.learning.server.DemoHttpServer;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Entry point that registers the demo routes and serves connections sequentially on port 8080.
+ * Entry point that registers demo routes and accepts connections on port 8080.
+ * Each connection is handled asynchronously on its own virtual thread.
+ *
+ * <p>The accept loop checks {@link DemoHttpServer#isRunning()}. A JVM shutdown hook
+ * calls {@link DemoHttpServer#close()} to stop accepting connections and apply the
+ * server's grace period before interrupting unfinished connection tasks.
  */
 public class Main {
     public static void main(String[] args) {
@@ -39,7 +44,15 @@ public class Main {
         DemoHttpServer demoHttpServer = new DemoHttpServer(8080, router);
         demoHttpServer.listen();
 
-        while (true) {
+        Runtime.getRuntime().addShutdownHook(
+                new Thread(() -> {
+                    System.out.println("Shutting down HTTP server...");
+                    demoHttpServer.close();
+                    System.out.println("HTTP server shutdown completed.");
+                }, "http-server-shutdown")
+        );
+
+        while (demoHttpServer.isRunning()) {
             demoHttpServer.acceptAndRespondOnce();
         }
 

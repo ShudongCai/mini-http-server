@@ -3,17 +3,19 @@ package dev.learning.response;
 import java.nio.charset.StandardCharsets;
 
 /**
- * An HTTP/1.1 response with a text body and a mutable Connection header value.
+ * An immutable HTTP/1.1 response with a text body and fixed header values.
  *
  * <p>Serialization uses a fixed text/plain content type with UTF-8 charset and a
- * Content-Length measured in UTF-8 bytes. The demo server may overwrite Connection
- * before sending the response; this class does not manage socket lifetimes.
+ * Content-Length measured in UTF-8 bytes. Built instances can be shared across
+ * threads. The demo server creates a separate response with a connection-specific
+ * Connection value before sending, leaving the handler's response unchanged.
+ * This class does not manage socket lifetimes.
  */
 public class HttpResponse {
     private final int statusCode;
     private final String reasonPhrase;
     private final String content;
-    private String connection;
+    private final String connection;
 
     private HttpResponse(int statusCode, String reasonPhrase, String content, String connection) {
         this.statusCode = statusCode;
@@ -40,13 +42,20 @@ public class HttpResponse {
                 + content;
     }
 
-    /**
-     * Replaces the Connection header value without validation or normalization.
-     *
-     * @param connection the value to store; null is not replaced with a default
-     */
-    public void setConnection(String connection) {
-        this.connection = connection;
+    public int getStatusCode() {
+        return statusCode;
+    }
+
+    public String getReasonPhrase() {
+        return reasonPhrase;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public String getConnection() {
+        return connection;
     }
 
     public static HttpResponseBuilder builder() {
@@ -58,6 +67,8 @@ public class HttpResponse {
      *
      * <p>Status code and reason phrase are independent: changing the code does not
      * automatically update the phrase.
+     * The builder is mutable and not thread-safe; its settings are copied into
+     * a new immutable response by {@link #build()}.
      */
     public static class HttpResponseBuilder {
         private int statusCode = 200;
@@ -112,8 +123,9 @@ public class HttpResponse {
         /**
          * Sets Connection, defaulting null to keep-alive.
          *
-         * <p>If a comma-separated token equals close ignoring case, the stored value is
-         * close; otherwise the supplied text is retained. Tokens are not trimmed.
+         * <p>Comma-separated tokens are trimmed for comparison. If any token equals
+         * close ignoring case, the stored value is close; otherwise the supplied
+         * text is retained.
          *
          * @param connection the header value, or null for keep-alive
          * @return this builder
@@ -134,7 +146,7 @@ public class HttpResponse {
         private boolean hasCloseOption(String connection) {
             String[] connectionValues = connection.split(",");
             for (String value : connectionValues) {
-                if (value.equalsIgnoreCase("close")) {
+                if (value.trim().equalsIgnoreCase("close")) {
                     return true;
                 }
             }
